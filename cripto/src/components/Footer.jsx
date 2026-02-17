@@ -1,7 +1,7 @@
-export default function Footer(){
-    return(
-        <footer className="footer">
-            <p>© 2026 CriptoHouse Invest</p>
-        </footer>
-    )
+export default function Footer() {
+  return (
+    <footer className="footer">
+      <div className="container">© 2026 CriptoHouse Invest</div>
+    </footer>
+  );
 }
