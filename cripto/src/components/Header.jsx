@@ -5,15 +5,15 @@ export default function Header() {
     <header className="header">
       <div className="container header-inner">
         <div className="brand">
-          <h1>Criptohouse Invest</h1>
-          <span>Controle sua carteira em tempo real</span>
+          <h1>CriptoHouse Invest</h1>
+          <span>Mercado cripto com Binance e Bybit em tempo quase real</span>
         </div>
 
         <nav className="nav">
           <Link to="/">Home</Link>
           <Link to="/coins">Mercado</Link>
-          <Link to="/coins">
-            <button className="btn btn-primary">Entrar</button>
+          <Link to="/coins" className="nav-button-link">
+            <button className="btn btn-primary">Explorar</button>
           </Link>
         </nav>
       </div>

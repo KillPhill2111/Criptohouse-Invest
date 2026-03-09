@@ -4,16 +4,19 @@ export default function Hero() {
   return (
     <section className="hero">
       <div className="container">
-        <h2>Invista melhor. Controle total da sua carteira.</h2>
+        <h2>Acompanhe o mercado cripto por exchange</h2>
         <p>
-          Acompanhe seus investimentos em tempo real e tome decisões mais inteligentes.
+          Escolha entre Binance e Bybit, visualize pares, últimas transações,
+          livro de ofertas e acompanhe o gráfico dos últimos preços.
         </p>
 
         <div className="hero-actions">
-          <button className="btn btn-primary">Começar agora</button>
+          <Link to="/coins">
+            <button className="btn btn-primary">Começar agora</button>
+          </Link>
 
           <Link to="/coins">
-            <button className="btn btn-ghost">Ver Mercado</button>
+            <button className="btn btn-ghost">Ver mercado</button>
           </Link>
         </div>
       </div>
