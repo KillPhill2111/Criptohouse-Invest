@@ -5,63 +5,65 @@ import Footer from "../components/Footer";
 
 const PAGE_SIZE = 10;
 
-function formatNumber(value, digits = 6) {
-  const num = Number(value);
-  if (Number.isNaN(num)) return "-";
-  return num.toLocaleString("en-US", {
+function formatNumber(value, digits = 8) {
+  const number = Number(value);
+
+  if (Number.isNaN(number)) {
+    return "-";
+  }
+
+  return number.toLocaleString("pt-BR", {
     maximumFractionDigits: digits,
   });
 }
 
-function normalizeBinanceTicker(item) {
-  return {
-    symbol: item.symbol,
-    base: item.symbol,
-    lastPrice: Number(item.lastPrice),
-    priceChangePercent: Number(item.priceChangePercent),
-  };
-}
+async function fetchBinancePairs() {
+  const response = await fetch("https://api.binance.com/api/v3/ticker/24hr");
 
-function normalizeBybitTicker(item) {
-  return {
-    symbol: item.symbol,
-    base: item.symbol,
-    lastPrice: Number(item.lastPrice),
-    priceChangePercent: Number(item.price24hPcnt) * 100,
-  };
-}
-
-async function fetchExchangePairs(exchange) {
-  if (exchange === "binance") {
-    const res = await fetch("https://api.binance.com/api/v3/ticker/24hr");
-    if (!res.ok) throw new Error("Falha ao carregar dados da Binance.");
-    const data = await res.json();
-
-    return data
-      .filter((item) => item.symbol.endsWith("USDT"))
-      .map(normalizeBinanceTicker)
-      .sort((a, b) => b.lastPrice - a.lastPrice);
+  if (!response.ok) {
+    throw new Error("Erro ao buscar dados da Binance.");
   }
 
-  const res = await fetch("https://api.bybit.com/v5/market/tickers?category=spot");
-  if (!res.ok) throw new Error("Falha ao carregar dados da Bybit.");
-  const data = await res.json();
+  const data = await response.json();
 
-  return (data?.result?.list || [])
-    .filter((item) => item.symbol.endsWith("USDT"))
-    .map(normalizeBybitTicker)
-    .sort((a, b) => b.lastPrice - a.lastPrice);
+  return data.map((item) => ({
+    symbol: item.symbol,
+    price: item.lastPrice,
+    change: item.priceChangePercent,
+  }));
+}
+
+async function fetchBybitPairs() {
+  const response = await fetch(
+    "https://api.bybit.com/v5/market/tickers?category=spot"
+  );
+
+  if (!response.ok) {
+    throw new Error("Erro ao buscar dados da Bybit.");
+  }
+
+  const data = await response.json();
+
+  return (data?.result?.list || []).map((item) => ({
+    symbol: item.symbol,
+    price: item.lastPrice,
+    change: Number(item.price24hPcnt) * 100,
+  }));
 }
 
 async function fetchTrades(exchange, symbol) {
   if (!symbol) return [];
 
   if (exchange === "binance") {
-    const res = await fetch(
+    const response = await fetch(
       `https://api.binance.com/api/v3/trades?symbol=${symbol}&limit=8`
     );
-    if (!res.ok) throw new Error("Falha ao carregar trades da Binance.");
-    const data = await res.json();
+
+    if (!response.ok) {
+      throw new Error("Erro ao buscar trades da Binance.");
+    }
+
+    const data = await response.json();
 
     return data.map((item) => ({
       id: item.id,
@@ -70,11 +72,15 @@ async function fetchTrades(exchange, symbol) {
     }));
   }
 
-  const res = await fetch(
+  const response = await fetch(
     `https://api.bybit.com/v5/market/recent-trade?category=spot&symbol=${symbol}&limit=8`
   );
-  if (!res.ok) throw new Error("Falha ao carregar trades da Bybit.");
-  const data = await res.json();
+
+  if (!response.ok) {
+    throw new Error("Erro ao buscar trades da Bybit.");
+  }
+
+  const data = await response.json();
 
   return (data?.result?.list || []).map((item, index) => ({
     id: `${item.execTime}-${index}`,
@@ -87,11 +93,15 @@ async function fetchOrderBook(exchange, symbol) {
   if (!symbol) return { bids: [], asks: [] };
 
   if (exchange === "binance") {
-    const res = await fetch(
+    const response = await fetch(
       `https://api.binance.com/api/v3/depth?symbol=${symbol}&limit=8`
     );
-    if (!res.ok) throw new Error("Falha ao carregar order book da Binance.");
-    const data = await res.json();
+
+    if (!response.ok) {
+      throw new Error("Erro ao buscar livro de ofertas da Binance.");
+    }
+
+    const data = await response.json();
 
     return {
       bids: data.bids || [],
@@ -99,11 +109,15 @@ async function fetchOrderBook(exchange, symbol) {
     };
   }
 
-  const res = await fetch(
+  const response = await fetch(
     `https://api.bybit.com/v5/market/orderbook?category=spot&symbol=${symbol}&limit=8`
   );
-  if (!res.ok) throw new Error("Falha ao carregar order book da Bybit.");
-  const data = await res.json();
+
+  if (!response.ok) {
+    throw new Error("Erro ao buscar livro de ofertas da Bybit.");
+  }
+
+  const data = await response.json();
 
   return {
     bids: data?.result?.b || [],
@@ -115,21 +129,25 @@ export default function Coins() {
   const [exchange, setExchange] = useState("binance");
   const [pairs, setPairs] = useState([]);
   const [loadingPairs, setLoadingPairs] = useState(true);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const [trades, setTrades] = useState([]);
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] });
-  const [detailLoading, setDetailLoading] = useState(false);
-
-  const [error, setError] = useState("");
+  const [loadingPairData, setLoadingPairData] = useState(false);
 
   async function loadPairs() {
     try {
       setLoadingPairs(true);
       setError("");
-      const data = await fetchExchangePairs(exchange);
+
+      const data =
+        exchange === "binance"
+          ? await fetchBinancePairs()
+          : await fetchBybitPairs();
+
       setPairs(data);
       setCurrentPage(1);
 
@@ -151,21 +169,22 @@ export default function Coins() {
     if (!symbol) return;
 
     try {
-      setDetailLoading(true);
+      setLoadingPairData(true);
       setError("");
-      const [tradeData, orderBookData] = await Promise.all([
+
+      const [tradesData, orderBookData] = await Promise.all([
         fetchTrades(exchange, symbol),
         fetchOrderBook(exchange, symbol),
       ]);
 
-      setTrades(tradeData);
+      setTrades(tradesData);
       setOrderBook(orderBookData);
     } catch (err) {
-      setError(err.message || "Erro ao carregar detalhes do par.");
+      setError(err.message || "Erro ao carregar dados do par.");
       setTrades([]);
       setOrderBook({ bids: [], asks: [] });
     } finally {
-      setDetailLoading(false);
+      setLoadingPairData(false);
     }
   }
 
@@ -182,18 +201,17 @@ export default function Coins() {
   useEffect(() => {
     const interval = setInterval(() => {
       loadPairs();
-      if (selectedSymbol) {
-        loadPairDetails(selectedSymbol);
-      }
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [exchange, selectedSymbol]);
+  }, [exchange]);
 
   const filteredPairs = useMemo(() => {
-    return pairs.filter((pair) =>
-      pair.symbol.toLowerCase().includes(search.toLowerCase())
-    );
+    const term = search.toLowerCase();
+
+    return pairs.filter((pair) => {
+      return pair.symbol.toLowerCase().includes(term);
+    });
   }, [pairs, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredPairs.length / PAGE_SIZE));
@@ -223,7 +241,7 @@ export default function Coins() {
           <div>
             <h1>Mercado Cripto</h1>
             <p className="page-subtitle">
-              Escolha a exchange, consulte os pares e visualize trades e livro de ofertas.
+              Escolha a exchange, busque pares e visualize trades e order book.
             </p>
           </div>
 
@@ -245,7 +263,7 @@ export default function Coins() {
             <label>Buscar par</label>
             <input
               type="text"
-              placeholder="Ex.: BTCUSDT"
+              placeholder="Ex.: BTCBRL, BTCUSDT, ETH"
               value={search}
               onChange={handleSearchChange}
             />
@@ -253,7 +271,7 @@ export default function Coins() {
 
           <div className="toolbar-actions">
             <button className="btn btn-primary" onClick={loadPairs}>
-              Atualizar agora
+              Atualizar Exchanges
             </button>
           </div>
         </section>
@@ -263,7 +281,7 @@ export default function Coins() {
         <section className="market-grid">
           <div className="card">
             <div className="section-header">
-              <h2>Pares da {exchange === "binance" ? "Binance" : "Bybit"}</h2>
+              <h2>Pares disponíveis</h2>
               <span>{filteredPairs.length} resultados</span>
             </div>
 
@@ -287,19 +305,17 @@ export default function Coins() {
                           onClick={() => setSelectedSymbol(pair.symbol)}
                         >
                           <strong>{pair.symbol}</strong>
-                          <span>Último preço: ${formatNumber(pair.lastPrice, 8)}</span>
-                          <span>
-                            Variação 24h: {formatNumber(pair.priceChangePercent, 2)}%
-                          </span>
+                          <span>Último preço: R$ {formatNumber(pair.price, 8)}</span>
+                          <span>Variação 24h: {formatNumber(pair.change, 2)}%</span>
                         </button>
                       </div>
 
                       <div className="pair-actions">
                         <button
                           className="btn btn-ghost"
-                          onClick={() => setSelectedSymbol(pair.symbol)}
+                          onClick={() => loadPairDetails(pair.symbol)}
                         >
-                          Ver livro/trades
+                          Atualizar Par
                         </button>
 
                         <Link to={`/coin/${exchange}/${pair.symbol}`}>
@@ -342,7 +358,7 @@ export default function Coins() {
                 <span>{selectedSymbol || "-"}</span>
               </div>
 
-              {detailLoading ? (
+              {loadingPairData ? (
                 <p>Carregando transações...</p>
               ) : trades.length === 0 ? (
                 <p>Selecione um par para visualizar as transações.</p>
@@ -350,7 +366,7 @@ export default function Coins() {
                 <div className="table-list">
                   {trades.map((trade) => (
                     <div key={trade.id} className="table-row">
-                      <span>Preço: ${formatNumber(trade.price, 8)}</span>
+                      <span>Preço: R$ {formatNumber(trade.price, 8)}</span>
                       <span>Qtd: {formatNumber(trade.qty, 8)}</span>
                     </div>
                   ))}
@@ -364,7 +380,7 @@ export default function Coins() {
                 <span>{selectedSymbol || "-"}</span>
               </div>
 
-              {detailLoading ? (
+              {loadingPairData ? (
                 <p>Carregando livro de ofertas...</p>
               ) : (
                 <div className="orderbook-grid">
@@ -375,7 +391,7 @@ export default function Coins() {
                     ) : (
                       orderBook.bids.map((bid, index) => (
                         <div key={`bid-${index}`} className="table-row">
-                          <span>Preço: ${formatNumber(bid[0], 8)}</span>
+                          <span>Preço: R$ {formatNumber(bid[0], 8)}</span>
                           <span>Qtd: {formatNumber(bid[1], 8)}</span>
                         </div>
                       ))
@@ -389,7 +405,7 @@ export default function Coins() {
                     ) : (
                       orderBook.asks.map((ask, index) => (
                         <div key={`ask-${index}`} className="table-row">
-                          <span>Preço: ${formatNumber(ask[0], 8)}</span>
+                          <span>Preço: R$ {formatNumber(ask[0], 8)}</span>
                           <span>Qtd: {formatNumber(ask[1], 8)}</span>
                         </div>
                       ))

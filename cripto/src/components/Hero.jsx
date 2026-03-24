@@ -6,8 +6,8 @@ export default function Hero() {
       <div className="container">
         <h2>Acompanhe o mercado cripto por exchange</h2>
         <p>
-          Escolha entre Binance e Bybit, visualize pares, últimas transações,
-          livro de ofertas e acompanhe o gráfico dos últimos preços.
+          Escolha entre Binance e Bybit, consulte pares de criptomoedas,
+          visualize últimas transações, livro de ofertas e gráfico de preços.
         </p>
 
         <div className="hero-actions">
@@ -16,7 +16,7 @@ export default function Hero() {
           </Link>
 
           <Link to="/coins">
-            <button className="btn btn-ghost">Ver mercado</button>
+            <button className="btn btn-ghost">Ver Mercado</button>
           </Link>
         </div>
       </div>
