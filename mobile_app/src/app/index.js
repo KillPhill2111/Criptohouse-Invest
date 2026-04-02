@@ -1,34 +1,32 @@
-import { SafeAreaView, ScrollView, StyleSheet, View } from "react-native";
-import Header from "./components/Header";
-import Hero from "./components/Hero";
-import Feature from "./components/Feature";
-import Footer from "./components/Footer";
+import { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { useAuth } from '../context/AuthContext';
 
 export default function HomeScreen() {
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (user) {
+      router.replace('/markets');
+    } else {
+      router.replace('/login');
+    }
+  }, [user, loading]);
+
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Header />
-        <Hero />
-        <View style={styles.section}>
-          <Feature />
-        </View>
-        <Footer />
-      </ScrollView>
-    </SafeAreaView>
+    <View style={styles.container}>
+      <ActivityIndicator size="large" />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: "#0b1220",
-  },
   container: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-  },
-  section: {
-    marginTop: 8,
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: '#fff',
   },
 });

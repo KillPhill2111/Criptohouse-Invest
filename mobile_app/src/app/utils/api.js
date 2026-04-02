@@ -1,34 +1,59 @@
-export async function fetchBinancePairs() {
-  const response = await fetch("https://api.binance.com/api/v3/ticker/24hr");
+const BINANCE_BASE_URL = "https://api.binance.com/api/v3";
+const BYBIT_BASE_URL = "https://api.bybit.com/v5/market";
 
-  if (!response.ok) {
-    throw new Error("Erro ao buscar dados da Binance.");
+async function safeFetchJson(url) {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("Erro de fetch:", url, error);
+    throw new Error("Falha ao buscar dados da API.");
+  }
+}
+
+export async function fetchBinancePairs() {
+  const data = await safeFetchJson(`${BINANCE_BASE_URL}/ticker/24hr`);
+
+  if (!Array.isArray(data)) {
+    throw new Error("Resposta inválida da Binance.");
   }
 
-  const data = await response.json();
-
-  return data.map((item) => ({
-    symbol: item.symbol,
-    price: item.lastPrice,
-    change: item.priceChangePercent,
-  }));
+  return data
+    .slice(0, 100)
+    .map((item) => ({
+      symbol: item.symbol,
+      price: Number(item.lastPrice || 0),
+      change: Number(item.priceChangePercent || 0),
+      volume: Number(item.volume || 0),
+    }));
 }
 
 export async function fetchBybitPairs() {
-  const response = await fetch(
-    "https://api.bybit.com/v5/market/tickers?category=spot"
+  const data = await safeFetchJson(
+    `${BYBIT_BASE_URL}/tickers?category=spot`
   );
 
-  if (!response.ok) {
-    throw new Error("Erro ao buscar dados da Bybit.");
+  const list = data?.result?.list;
+
+  if (!Array.isArray(list)) {
+    throw new Error("Resposta inválida da Bybit.");
   }
 
-  const data = await response.json();
-
-  return (data?.result?.list || []).map((item) => ({
+  return list.slice(0, 100).map((item) => ({
     symbol: item.symbol,
-    price: item.lastPrice,
-    change: Number(item.price24hPcnt) * 100,
+    price: Number(item.lastPrice || 0),
+    change: Number(item.price24hPcnt || 0) * 100,
+    volume: Number(item.volume24h || 0),
   }));
 }
 
@@ -36,37 +61,32 @@ export async function fetchTrades(exchange, symbol) {
   if (!symbol) return [];
 
   if (exchange === "binance") {
-    const response = await fetch(
-      `https://api.binance.com/api/v3/trades?symbol=${symbol}&limit=8`
+    const data = await safeFetchJson(
+      `${BINANCE_BASE_URL}/trades?symbol=${symbol}&limit=10`
     );
 
-    if (!response.ok) {
-      throw new Error("Erro ao buscar trades da Binance.");
-    }
+    if (!Array.isArray(data)) return [];
 
-    const data = await response.json();
-
-    return data.map((item) => ({
-      id: item.id,
-      price: item.price,
-      qty: item.qty,
+    return data.map((trade, index) => ({
+      id: trade.id?.toString?.() || `${symbol}-trade-${index}`,
+      price: Number(trade.price || 0),
+      qty: Number(trade.qty || 0),
+      time: trade.time || Date.now(),
     }));
   }
 
-  const response = await fetch(
-    `https://api.bybit.com/v5/market/recent-trade?category=spot&symbol=${symbol}&limit=8`
+  const data = await safeFetchJson(
+    `${BYBIT_BASE_URL}/recent-trade?category=spot&symbol=${symbol}&limit=10`
   );
 
-  if (!response.ok) {
-    throw new Error("Erro ao buscar trades da Bybit.");
-  }
+  const list = data?.result?.list;
+  if (!Array.isArray(list)) return [];
 
-  const data = await response.json();
-
-  return (data?.result?.list || []).map((item, index) => ({
-    id: `${item.execTime}-${index}`,
-    price: item.execPrice,
-    qty: item.execQty,
+  return list.map((trade, index) => ({
+    id: trade.execId || `${symbol}-trade-${index}`,
+    price: Number(trade.price || 0),
+    qty: Number(trade.size || 0),
+    time: Number(trade.time || Date.now()),
   }));
 }
 
@@ -74,96 +94,71 @@ export async function fetchOrderBook(exchange, symbol) {
   if (!symbol) return { bids: [], asks: [] };
 
   if (exchange === "binance") {
-    const response = await fetch(
-      `https://api.binance.com/api/v3/depth?symbol=${symbol}&limit=8`
+    const data = await safeFetchJson(
+      `${BINANCE_BASE_URL}/depth?symbol=${symbol}&limit=10`
     );
 
-    if (!response.ok) {
-      throw new Error("Erro ao buscar livro de ofertas da Binance.");
-    }
-
-    const data = await response.json();
-
     return {
-      bids: data.bids || [],
-      asks: data.asks || [],
+      bids: Array.isArray(data?.bids) ? data.bids : [],
+      asks: Array.isArray(data?.asks) ? data.asks : [],
     };
   }
 
-  const response = await fetch(
-    `https://api.bybit.com/v5/market/orderbook?category=spot&symbol=${symbol}&limit=8`
+  const data = await safeFetchJson(
+    `${BYBIT_BASE_URL}/orderbook?category=spot&symbol=${symbol}&limit=10`
   );
 
-  if (!response.ok) {
-    throw new Error("Erro ao buscar livro de ofertas da Bybit.");
-  }
-
-  const data = await response.json();
+  const result = data?.result || {};
 
   return {
-    bids: data?.result?.b || [],
-    asks: data?.result?.a || [],
+    bids: Array.isArray(result.b) ? result.b : [],
+    asks: Array.isArray(result.a) ? result.a : [],
   };
 }
 
-export async function fetchChartData(exchange, symbol, interval) {
+export async function fetchChartData(exchange, symbol, interval = "1d") {
+  if (!symbol) return [];
+
   if (exchange === "binance") {
-    let apiInterval = "1h";
-    let limit = 24;
+    const binanceIntervalMap = {
+      "1h": "1m",
+      "1d": "1h",
+      "1y": "1M",
+    };
 
-    if (interval === "1d") {
-      apiInterval = "1d";
-      limit = 30;
-    }
+    const apiInterval = binanceIntervalMap[interval] || "1h";
 
-    if (interval === "1y") {
-      apiInterval = "1M";
-      limit = 12;
-    }
-
-    const response = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${apiInterval}&limit=${limit}`
+    const data = await safeFetchJson(
+      `${BINANCE_BASE_URL}/klines?symbol=${symbol}&interval=${apiInterval}&limit=20`
     );
 
-    if (!response.ok) {
-      throw new Error("Erro ao carregar gráfico da Binance.");
-    }
-
-    const data = await response.json();
+    if (!Array.isArray(data)) return [];
 
     return data.map((item) => ({
-      time: item[0],
-      close: Number(item[4]),
+      timestamp: Number(item[0]),
+      price: Number(item[4]),
     }));
   }
 
-  let apiInterval = "60";
-  let limit = 24;
+  const bybitIntervalMap = {
+    "1h": "1",
+    "1d": "60",
+    "1y": "M",
+  };
 
-  if (interval === "1d") {
-    apiInterval = "D";
-    limit = 30;
-  }
+  const apiInterval = bybitIntervalMap[interval] || "60";
 
-  if (interval === "1y") {
-    apiInterval = "M";
-    limit = 12;
-  }
-
-  const response = await fetch(
-    `https://api.bybit.com/v5/market/kline?category=spot&symbol=${symbol}&interval=${apiInterval}&limit=${limit}`
+  const data = await safeFetchJson(
+    `${BYBIT_BASE_URL}/kline?category=spot&symbol=${symbol}&interval=${apiInterval}&limit=20`
   );
 
-  if (!response.ok) {
-    throw new Error("Erro ao carregar gráfico da Bybit.");
-  }
+  const list = data?.result?.list;
+  if (!Array.isArray(list)) return [];
 
-  const data = await response.json();
-
-  return (data?.result?.list || [])
+  return [...list]
+    .reverse()
     .map((item) => ({
-      time: item[0],
-      close: Number(item[4]),
-    }))
-    .reverse();
+      timestamp: Number(item[0]),
+      price: Number(item[4]),
+    }));
 }

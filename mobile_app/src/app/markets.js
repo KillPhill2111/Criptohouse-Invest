@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { router } from "expo-router";
 import {
   SafeAreaView,
   ScrollView,
@@ -18,10 +19,13 @@ import {
   fetchOrderBook,
 } from "./utils/api";
 import { formatNumber } from "./utils/format";
+import { useAuth } from "../context/AuthContext";
 
 const PAGE_SIZE = 10;
 
 export default function MarketsScreen() {
+  const { user, signOut, profilePhoto } = useAuth();
+
   const [exchange, setExchange] = useState("binance");
   const [pairs, setPairs] = useState([]);
   const [loadingPairs, setLoadingPairs] = useState(true);
@@ -34,68 +38,73 @@ export default function MarketsScreen() {
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] });
   const [loadingPairData, setLoadingPairData] = useState(false);
 
-  const loadPairs = useCallback(async () => {
-  try {
-    setLoadingPairs(true);
-    setError("");
-
-    const data =
-      exchange === "binance"
-        ? await fetchBinancePairs()
-        : await fetchBybitPairs();
-
-    setPairs(data);
-    setCurrentPage(1);
-
-    if (data.length > 0) {
-      setSelectedSymbol(data[0].symbol);
-    } else {
-      setSelectedSymbol("");
-    }
-  } catch (err) {
-    setError(err.message || "Erro ao carregar pares.");
-    setPairs([]);
-    setSelectedSymbol("");
-  } finally {
-    setLoadingPairs(false);
+  async function handleLogout() {
+    await signOut();
+    router.replace("/login");
   }
-}, [exchange]);
 
- const loadPairDetails = useCallback(
-  async (symbol) => {
-    if (!symbol) return;
-
+  const loadPairs = useCallback(async () => {
     try {
-      setLoadingPairData(true);
+      setLoadingPairs(true);
       setError("");
 
-      const [tradesData, orderBookData] = await Promise.all([
-        fetchTrades(exchange, symbol),
-        fetchOrderBook(exchange, symbol),
-      ]);
+      const data =
+        exchange === "binance"
+          ? await fetchBinancePairs()
+          : await fetchBybitPairs();
 
-      setTrades(tradesData);
-      setOrderBook(orderBookData);
+      setPairs(data);
+      setCurrentPage(1);
+
+      if (data.length > 0) {
+        setSelectedSymbol(data[0].symbol);
+      } else {
+        setSelectedSymbol("");
+      }
     } catch (err) {
-      setError(err.message || "Erro ao carregar dados do par.");
-      setTrades([]);
-      setOrderBook({ bids: [], asks: [] });
+      setError(err.message || "Erro ao carregar pares.");
+      setPairs([]);
+      setSelectedSymbol("");
     } finally {
-      setLoadingPairData(false);
+      setLoadingPairs(false);
     }
-  },
-  [exchange]
-);
+  }, [exchange]);
+
+  const loadPairDetails = useCallback(
+    async (symbol) => {
+      if (!symbol) return;
+
+      try {
+        setLoadingPairData(true);
+        setError("");
+
+        const [tradesData, orderBookData] = await Promise.all([
+          fetchTrades(exchange, symbol),
+          fetchOrderBook(exchange, symbol),
+        ]);
+
+        setTrades(tradesData);
+        setOrderBook(orderBookData);
+      } catch (err) {
+        setError(err.message || "Erro ao carregar dados do par.");
+        setTrades([]);
+        setOrderBook({ bids: [], asks: [] });
+      } finally {
+        setLoadingPairData(false);
+      }
+    },
+    [exchange]
+  );
 
   useEffect(() => {
-  loadPairs();
-}, [loadPairs]);
+    loadPairs();
+  }, [loadPairs]);
 
-useEffect(() => {
-  if (selectedSymbol) {
-    loadPairDetails(selectedSymbol);
-  }
-}, [loadPairDetails, selectedSymbol]);
+  useEffect(() => {
+    if (selectedSymbol) {
+      loadPairDetails(selectedSymbol);
+    }
+  }, [loadPairDetails, selectedSymbol]);
 
   const filteredPairs = useMemo(() => {
     const term = search.toLowerCase();
@@ -114,6 +123,24 @@ useEffect(() => {
       <ScrollView contentContainerStyle={styles.container}>
         <Header />
 
+        <View style={styles.userCard}>
+          <Text style={styles.userTitle}>Usuário logado</Text>
+
+          <Text style={styles.userText}>
+            {user?.email || "Não identificado"}
+          </Text>
+
+          {profilePhoto ? (
+            <Text style={styles.userText}>Foto carregada com sucesso</Text>
+          ) : (
+            <Text style={styles.userText}>Nenhuma foto cadastrada</Text>
+          )}
+
+          <Pressable style={styles.logoutButton} onPress={handleLogout}>
+            <Text style={styles.logoutText}>Sair</Text>
+          </Pressable>
+        </View>
+
         <Text style={styles.title}>Mercado Cripto</Text>
         <Text style={styles.subtitle}>
           Escolha a exchange, busque pares e visualize trades e order book.
@@ -122,14 +149,20 @@ useEffect(() => {
         <View style={styles.toolbar}>
           <View style={styles.toggleRow}>
             <Pressable
-              style={[styles.toggle, exchange === "binance" && styles.toggleActive]}
+              style={[
+                styles.toggle,
+                exchange === "binance" && styles.toggleActive,
+              ]}
               onPress={() => setExchange("binance")}
             >
               <Text style={styles.toggleText}>Binance</Text>
             </Pressable>
 
             <Pressable
-              style={[styles.toggle, exchange === "bybit" && styles.toggleActive]}
+              style={[
+                styles.toggle,
+                exchange === "bybit" && styles.toggleActive,
+              ]}
               onPress={() => setExchange("bybit")}
             >
               <Text style={styles.toggleText}>Bybit</Text>
@@ -202,18 +235,26 @@ useEffect(() => {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Últimas transações — {selectedSymbol || "-"}</Text>
+          <Text style={styles.sectionTitle}>
+            Últimas transações — {selectedSymbol || "-"}
+          </Text>
 
           {loadingPairData ? (
             <Text style={styles.infoText}>Carregando transações...</Text>
           ) : trades.length === 0 ? (
-            <Text style={styles.infoText}>Selecione um par para visualizar as transações.</Text>
+            <Text style={styles.infoText}>
+              Selecione um par para visualizar as transações.
+            </Text>
           ) : (
             <View style={styles.tableList}>
               {trades.map((trade) => (
                 <View key={trade.id} style={styles.tableRow}>
-                  <Text style={styles.cellText}>Preço: R$ {formatNumber(trade.price, 8)}</Text>
-                  <Text style={styles.cellText}>Qtd: {formatNumber(trade.qty, 8)}</Text>
+                  <Text style={styles.cellText}>
+                    Preço: R$ {formatNumber(trade.price, 8)}
+                  </Text>
+                  <Text style={styles.cellText}>
+                    Qtd: {formatNumber(trade.qty, 8)}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -221,7 +262,9 @@ useEffect(() => {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Livro de ofertas — {selectedSymbol || "-"}</Text>
+          <Text style={styles.sectionTitle}>
+            Livro de ofertas — {selectedSymbol || "-"}
+          </Text>
 
           {loadingPairData ? (
             <Text style={styles.infoText}>Carregando livro de ofertas...</Text>
@@ -233,8 +276,12 @@ useEffect(() => {
               ) : (
                 orderBook.bids.map((bid, index) => (
                   <View key={`bid-${index}`} style={styles.tableRow}>
-                    <Text style={styles.cellText}>Preço: R$ {formatNumber(bid[0], 8)}</Text>
-                    <Text style={styles.cellText}>Qtd: {formatNumber(bid[1], 8)}</Text>
+                    <Text style={styles.cellText}>
+                      Preço: R$ {formatNumber(bid[0], 8)}
+                    </Text>
+                    <Text style={styles.cellText}>
+                      Qtd: {formatNumber(bid[1], 8)}
+                    </Text>
                   </View>
                 ))
               )}
@@ -245,8 +292,12 @@ useEffect(() => {
               ) : (
                 orderBook.asks.map((ask, index) => (
                   <View key={`ask-${index}`} style={styles.tableRow}>
-                    <Text style={styles.cellText}>Preço: R$ {formatNumber(ask[0], 8)}</Text>
-                    <Text style={styles.cellText}>Qtd: {formatNumber(ask[1], 8)}</Text>
+                    <Text style={styles.cellText}>
+                      Preço: R$ {formatNumber(ask[0], 8)}
+                    </Text>
+                    <Text style={styles.cellText}>
+                      Qtd: {formatNumber(ask[1], 8)}
+                    </Text>
                   </View>
                 ))
               )}
@@ -269,6 +320,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 24,
     gap: 16,
+  },
+  userCard: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 16,
+    padding: 14,
+    gap: 6,
+  },
+  userTitle: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  userText: {
+    color: "#cbd5e1",
+  },
+  logoutButton: {
+    marginTop: 10,
+    backgroundColor: "#ef4444",
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  logoutText: {
+    color: "#fff",
+    textAlign: "center",
+    fontWeight: "700",
   },
   title: {
     color: "#fff",
