@@ -1,6 +1,6 @@
 import { Alert, Button, Image, Platform, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 
 export default function CameraProfile() {
   const { profilePhoto, saveProfilePhoto } = useAuth();
